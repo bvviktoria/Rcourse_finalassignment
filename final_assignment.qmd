@@ -20,7 +20,7 @@ Data source: Chess Game Dataset (Lichess) TidyTuesday / 2024-10-01 <https://gith
 Does the *success rate* (as the rate of wins out of the total number of games played by the player), the *rate of playing white role* ( rate of taking the white role -\> does playing in the starter position offer advantage?) and the *experience* (as total nr of games played) influence the players' ranking (the player's highest rating)?
 
 ```{r}
-#| warning: false
+#| message: false
 library(tidyverse)
 library(skimr) # skim()
 library(lmtest) # lrtest()
@@ -186,25 +186,25 @@ player_statistics |>
 Explore relationship between ranking and win ratio
 
 ```{r}
-ggplot(player_statistics, aes(ranking, win_rate))+
+ggplot(player_statistics, aes(win_rate, ranking))+
   geom_point()+
   geom_smooth(method = "lm", se = FALSE)+
-  labs(title = "Association between players ranking and their win rate", y = " Ratio of games won", x= "Player's rank")+
+  labs(title = "Association between players ranking and their win rate", y = "Player's rank ", x= "Ratio of games won")+
   theme_minimal()
 ```
 
 Explore relationship between total number of games played and ranking ( with inclusion of win rate)
 
 ```{r}
-ggplot(player_statistics, aes(ranking, games_nr,color = win_rate))+
+ggplot(player_statistics, aes(games_nr, win_rate, color = ranking))+
   geom_point()+
-  labs(title = "Relationship between the experiance and the ranking of the player", y= "Player ranking", x="Total number of games played", color = "Win rate")+
+  labs(title = "Relationship between the experiance and the ranking of the player", y= "Win rate", x="Total number of games played", color = "Ranking")+
   theme_bw()
 ```
 
 ### Model building
 
-#### 1st model: Ranking predicted by total nr of games, win ratio and the average turns, and the white role ratio
+#### 1st model: Ranking predicted by total nr of games, win ratio and the white role ratio
 
 ```{r}
 
@@ -259,7 +259,7 @@ player_statistics |>
   correlation(method = "spearman")
 ```
 
-Results: VIF shows a lower value, however the plot indicates collienarity for the total number of games, also there is a significant Spearman correlation between ranking and total number of games
+Results: VIF shows a lower value, however the plot indicates collienarity for the total number of games, also there is a significant medium Spearman correlation between ranking and total number of games
 
 **Correlation of residuals**
 
@@ -285,7 +285,7 @@ summary(lm_win)
 check_model(lm_win)
 ```
 
-Results: Homogenity, linearity and normailty seem acceptable; small protursion inn predicitons
+Results: Homogenity, linearity and normailty seem acceptable; small protursion in predicitons
 
 **VIF**: not applicable
 
@@ -454,10 +454,10 @@ Results: Neither test was significant
 
 ### Conclusions
 
-Unfortunately the total number of games could not be included in the models, thus conclusion cannot be drawn regarding that predictor. Also the std. residuals of all three models may seem questionable.
+Unfortunately the total number of games could not be included in the models, thus conclusion cannot be drawn regarding that predictor. Also the model evaluations yielded some possibly concerning results respecting std. residuals and autocorrelation of all three models.
 
-Regarding the coefficients, the win rates seemed significant predictors of the ranking of the player as shown in the coefficient table of the 2nd model above. The rate of the playing the initiating (white) role appeared no t to contribute significantly to the 3rd model as per the table.
+Regarding the coefficients, the win rate could seem significant predictors of the ranking of the player as shown in the coefficient table of the 2nd model above. The rate of the playing the initiating (white) role appearingly not contributed significantly to the 3rd model as per the table.
 
-Based on the results of the ANOVA and the Likelihood ratio test the difference between the models (with or without the role variable) has not reached the significance level, neither has the AIC dropped in a considerable manner. The adjusted R squares in both models are quite low, leaving a great proportion of unexplained variance.
+Based on the results of the ANOVA and the Likelihood ratio test the difference between the models (with or without the role variable) has not reached the significance level, neither has the AIC dropped in a considerable manner. The adjusted R squares in both models tended quite low, leaving a great proportion of unexplained variance.
 
-All together, even though the models show some significant results, the models do not explain too much of the variance. Additionally model diagnostics and possible violation of assumptions might leave the results unreliable.
+All together, even though the models show a significant predictor, the models do not explain too much of the variance. Additionally model diagnostics and possible violation of assumptions might leave the results unreliable.
