@@ -63,7 +63,7 @@ chess |>
 ```{r}
 # Data cleaning: filter fro duplicated and missing data
 chess_clean <- chess |> 
-  filter(!duplicated(chess)) |> # filter for duplicated rows
+  filter(!duplicated(chess)) # filter for duplicated rows
 
 ```
 
@@ -208,7 +208,7 @@ ggplot(player_statistics, aes(ranking, games_nr,color = win_rate))+
 
 ```{r}
 
-games_lm <- lm(ranking ~ win_rate + games_nr, data = player_statistics)
+games_lm <- lm(ranking ~ win_rate + games_nr + white_rate, data = player_statistics)
 
 summary(games_lm)
 ```
@@ -267,7 +267,9 @@ Results: VIF shows a lower value, however the plot indicates collienarity for th
 durbinWatsonTest(games_lm)
 ```
 
-Conclusion: total nr of games may be showing (plot vs vif test) a VIF (collinearity) too high to be included in the model, also seem to have influential outliers (std.residuals vs Cook's distance)
+Results: the test below 2 indicates positive autocorrelation
+
+Conclusion: total nr of games may be showing (plot vs vif test) a VIF (collinearity) too high to be included in the model, also seem to have influential outliers (std.residuals vs Cook's distance), correlation can be overly present
 
 #### 2nd model: Ranking predicted by the win ratio
 
@@ -316,7 +318,9 @@ Results: Some std residuals above 3
 durbinWatsonTest(lm_win)
 ```
 
-Conclusion: The influential observations and the predictions might be questionable based on the curves and std.residuals above, although the Cook's distances seem acceptable; other assumptions seem acceptable
+Results: the test below 2 indicates positive autocorrelation
+
+Conclusion: The influential observations, correlation and the predictions might be questionable based on the curves and std.residuals above, although the Cook's distances seem acceptable; other assumptions seem acceptable
 
 #### 3rd model: Ranking predicted by win rate and white role rate
 
@@ -368,7 +372,9 @@ Results: Some standard residuals above 3
 durbinWatsonTest(lm_role)
 ```
 
-Conclusion: The influential observations and the predictions might be questionable based on the std.residuals, although the Cook's distances seem acceptable, other assumptions seem acceptable
+Results: the test below 2 indicates positive autocorrelation
+
+Conclusion: The influential observations, correlation and the predictions might be questionable based on the std.residuals, although the Cook's distances seem acceptable, other assumptions seem acceptable
 
 #### Summary of models
 
