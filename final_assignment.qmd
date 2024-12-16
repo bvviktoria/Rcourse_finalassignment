@@ -269,7 +269,7 @@ durbinWatsonTest(games_lm)
 
 Results: the test below 2 indicates positive autocorrelation
 
-Conclusion: total nr of games may be showing (plot vs vif test) a VIF (collinearity) too high to be included in the model, also seem to have influential outliers (std.residuals vs Cook's distance), correlation can be overly present
+Conclusion: total nr of games may be showing (plot vs vif test) a VIF (collinearity) too high to be included in the model, also seem to have influential outliers (std.residuals vs Cook's distance). Std residuals may be too high, autocorrelation can be overly present.
 
 #### 2nd model: Ranking predicted by the win ratio
 
@@ -460,4 +460,4 @@ Regarding the coefficients, the win rate could seem significant predictors of th
 
 Based on the results of the ANOVA and the Likelihood ratio test the difference between the models (with or without the role variable) has not reached the significance level, neither has the AIC dropped in a considerable manner. The adjusted R squares in both models tended quite low, leaving a great proportion of unexplained variance.
 
-All together, even though the models show a significant predictor, the models do not explain too much of the variance. Additionally model diagnostics and possible violation of assumptions might leave the results unreliable.
+All together, even though the models show a significant predictor, the models do not explain too much of the variance. Additionally model diagnostics and possible violation of assumptions much likely leave the results unreliable.
