@@ -1,0 +1,457 @@
+---
+title: "final_assignment"
+author: "BV"
+date: today
+date-format: medium
+format: html
+toc: true
+toc-depth: 4
+editor: visual
+editor_options: 
+  chunk_output_type: inline
+---
+
+## Chess
+
+Data source: Chess Game Dataset (Lichess) TidyTuesday / 2024-10-01 <https://github.com/rfordatascience/tidytuesday/blob/main/data/2024/2024-10-01/readme.md>
+
+### Research question
+
+Does the *success rate* (as the rate of wins out of the total number of games played by the player), the *rate of playing white role* ( rate of taking the white role -\> does playing in the starter position offer advantage?) and the *experience* (as total nr of games played) influence the players' ranking (the player's highest rating)?
+
+```{r}
+#| warning: false
+library(tidyverse)
+library(skimr) # skim()
+library(lmtest) # lrtest()
+library(performance) # check_model()
+library(ggfortify) # autoplot()
+library(correlation) # correlation()
+library(car) # vif()
+library(broom) # glance()
+library(lm.beta) # lm.beta()
+```
+
+### Reading data file
+
+```{r}
+chess <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2024/2024-10-01/chess.csv')
+```
+
+### Data cleaning & EDA
+
+View data & details
+
+```{r}
+glimpse(chess)
+```
+
+```{r}
+skim(chess)
+```
+
+Data cleaning
+
+```{r}
+# Nr of unique games in the dataset
+chess |>
+  group_by(game_id) |>
+  summarize(n = n()) |>
+  arrange(desc(n))
+```
+
+```{r}
+# Data cleaning: filter fro duplicated and missing data
+chess_clean <- chess |> 
+  filter(!duplicated(chess)) |> # filter for duplicated rows
+
+```
+
+Plot: Player ratings per role
+
+```{r}
+chess_clean |>
+  pivot_longer(cols = c(black_rating, white_rating), names_to = "variable", values_to = "value")|>
+  ggplot(chess_clean, mapping = aes(value))+
+  geom_histogram(fill = "darkblue") +
+  facet_wrap(~variable, scale = "free") +
+  theme_bw()+
+  labs( title = "Distributions of player ratings per role", y = NULL, x = NULL)
+```
+
+Plot: Counts of total wins per role
+
+```{r}
+ggplot(chess_clean, aes(winner, fill = winner))+
+  geom_bar(show.legend = FALSE) +
+  geom_text(stat='count', aes(label=..count..), vjust=-1)+
+  ylim(0, 11000)+
+  labs(title = "Total count of results of the chess games")+
+  scale_fill_viridis_d(option = "G", begin = 0.3, end = 0.8)+
+  theme_light()
+```
+
+There seems to be a small difference between number of wins in favour of the white player, albeit not prominent ( + third unexpected category of "draw")
+
+#### Player-level data
+
+Extract player-level data from the game-level chess_clean dataset
+
+```{r}
+
+# Initialise player-level data by extracting the unique pseudonyms
+player_statistics <- chess_clean |> 
+  select(white_id, black_id) |>
+  pivot_longer(cols = c(white_id, black_id), names_to = "role", values_to = "player") 
+
+player_statistics <- player_statistics |> select(player) |> distinct(player)
+
+
+# Get the nr of games played by each player
+## "experience" is a temporary tibble
+experience <- chess_clean |>
+  select(black_id, white_id) |>
+  pivot_longer(cols = c(black_id, white_id), names_to = c("role"), values_to = "player")
+
+nr_games <- experience |> 
+  group_by(player) |>
+  summarize(games_nr=n())
+
+player_statistics <- player_statistics |> left_join(nr_games, by = "player") # join the nr of games to the player statistics table
+
+
+# Get the idices (counts) of each player choosing black or white pieces
+role_choice <- experience |>
+  group_by(player, role) |>
+  summarize(n=n()) |>
+  pivot_wider( names_from = role, values_from = n)
+
+player_statistics <-  player_statistics |> left_join(role_choice, by = "player") # join the counts of black-white roles to player statistics
+player_statistics <- player_statistics |> 
+  replace_na(list(black_id = 0, white_id = 0)) |> 
+  mutate(white_rate = white_id / games_nr, black_rate = black_id / games_nr) # fill the NAs with 0 and calculate rates
+
+
+# Get the number of games won by the player (count of explicitly won games, draws don't count)
+win_rate <- chess_clean |> mutate( player = case_when(
+  winner == "white" ~ white_id,
+  winner == "black" ~ black_id,
+  winner == "draw" ~ "0")) |>
+  select(player) |>
+  group_by(player) |>
+  summarize(win_nr=n()) |>
+  filter(player != 0)
+
+player_statistics <- player_statistics |> left_join(win_rate, by = "player") #join the won games count to player statistics
+player_statistics <- player_statistics |> 
+  replace_na(list(win_nr = 0)) |> 
+  mutate(win_rate = win_nr / games_nr) # fill the NAs with 0 and calculate rate
+
+
+# Get the rank (the highest) ofthe player
+## player rank 2 is a temporary table
+player_rank <- chess_clean |> 
+  select(white_id, white_rating) |>
+  distinct_at(vars(white_id), .keep_all = TRUE) |>
+  rename(player = white_id, ranking = white_rating)
+
+player_rank2 <- chess_clean |> 
+  select(black_id, black_rating) |>
+  distinct_at(vars(black_id), .keep_all = TRUE) |>
+  rename(player = black_id, ranking = black_rating)
+
+player_rank <- bind_rows(player_rank, player_rank2)|>
+  group_by(player) |> 
+  slice_max(ranking, n = 1) |> 
+  distinct()
+
+player_statistics <-  player_statistics |> left_join(player_rank, by = "player") #join players' rank to player statistics
+
+player_statistics
+```
+
+View player statistics histograms
+
+```{r}
+player_statistics |>
+  pivot_longer(cols = c(-player), names_to = "variable", values_to = "value")|>
+  ggplot(player_statistics, mapping = aes(value))+
+  geom_histogram(fill = "lightblue") +
+  facet_wrap(~variable, scale = "free") +
+  theme_bw()+
+  labs( title = "Distributions of player statistics variables", y = NULL, x = NULL)
+
+```
+
+Explore relationship between ranking and win ratio
+
+```{r}
+ggplot(player_statistics, aes(ranking, win_rate))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE)+
+  labs(title = "Association between players ranking and their win rate", y = " Ratio of games won", x= "Player's rank")+
+  theme_minimal()
+```
+
+Explore relationship between total number of games played and ranking ( with inclusion of win rate)
+
+```{r}
+ggplot(player_statistics, aes(ranking, games_nr,color = win_rate))+
+  geom_point()+
+  labs(title = "Relationship between the experiance and the ranking of the player", y= "Player ranking", x="Total number of games played", color = "Win rate")+
+  theme_bw()
+```
+
+### Model building
+
+#### 1st model: Ranking predicted by total nr of games, win ratio and the average turns, and the white role ratio
+
+```{r}
+
+games_lm <- lm(ranking ~ win_rate + games_nr, data = player_statistics)
+
+summary(games_lm)
+```
+
+Assumption check & Model diagnostics
+
+**Normality, linearity, homosceadsticity** (+ collinearity)
+
+```{r}
+check_model(games_lm)
+```
+
+Results: linearity, homoscedasticity and normality plots seem acceptable; small protursion of predicitons
+
+**Influential outliers**
+
+```{r}
+games_lm |> 
+  augment() |>
+  select(.cooksd) |>
+  arrange(desc(.cooksd))
+
+
+autoplot(games_lm, which = 4)
+
+```
+
+Results: Cook's distances are under 1
+
+```{r}
+games_lm |> 
+  augment() |>
+  select(.std.resid) |>
+  arrange(desc(.std.resid))
+```
+
+Results: some standard residuals are above 3
+
+**Multicollinearity**
+
+```{r}
+vif(games_lm)
+```
+
+```{r}
+player_statistics |>
+  select(ranking, games_nr)|>
+  correlation(method = "spearman")
+```
+
+Results: VIF shows a lower value, however the plot indicates collienarity for the total number of games, also there is a significant Spearman correlation between ranking and total number of games
+
+**Correlation of residuals**
+
+```{r}
+durbinWatsonTest(games_lm)
+```
+
+Conclusion: total nr of games may be showing (plot vs vif test) a VIF (collinearity) too high to be included in the model, also seem to have influential outliers (std.residuals vs Cook's distance)
+
+#### 2nd model: Ranking predicted by the win ratio
+
+```{r}
+lm_win <- lm(ranking ~ win_rate, data = player_statistics)
+
+summary(lm_win)
+```
+
+**Normality, linearity, homoscedasticity** (+influential observations, collinearity)
+
+```{r}
+check_model(lm_win)
+```
+
+Results: Homogenity, linearity and normailty seem acceptable; small protursion inn predicitons
+
+**VIF**: not applicable
+
+**Influential outliers**
+
+```{r}
+lm_win |> 
+  augment() |>
+  select(.cooksd) |>
+  arrange(desc(.cooksd))
+# all Cook's distances are under 1
+
+```
+
+Results: Cook's distances under 1
+
+```{r}
+lm_win |> 
+  augment() |>
+  select(.std.resid) |>
+  arrange(desc(.std.resid))
+# standard residuals are above 3
+```
+
+Results: Some std residuals above 3
+
+**Correlation of residuals**
+
+```{r}
+durbinWatsonTest(lm_win)
+```
+
+Conclusion: The influential observations and the predictions might be questionable based on the curves and std.residuals above, although the Cook's distances seem acceptable; other assumptions seem acceptable
+
+#### 3rd model: Ranking predicted by win rate and white role rate
+
+```{r}
+lm_role <- lm(ranking ~ win_rate + white_rate, data = player_statistics)
+
+summary(lm_role)
+```
+
+**Normality, Linearity, Homosceadsticity** ( + Influence and Collienearity)
+
+```{r}
+check_model(lm_role)
+```
+
+Results: Normality, Linearity, Homosceadsticity plots seem acceptable; small protursion in predicitons
+
+**VIF**
+
+```{r}
+vif(lm_role)
+```
+
+Results: VIFs seem acceptable based on test + plot
+
+**Influential outliers**
+
+```{r}
+lm_win |> 
+  augment() |>
+  select(.cooksd) |>
+  arrange(desc(.cooksd))
+```
+
+Results: Cook's distances below 1
+
+```{r}
+lm_role |> 
+  augment() |>
+  select(.std.resid) |>
+  arrange(desc(.std.resid))
+```
+
+Results: Some standard residuals above 3
+
+**Correlation of residuals**
+
+```{r}
+durbinWatsonTest(lm_role)
+```
+
+Conclusion: The influential observations and the predictions might be questionable based on the std.residuals, although the Cook's distances seem acceptable, other assumptions seem acceptable
+
+#### Summary of models
+
+**F-statistics**
+
+```{r}
+summary(lm_win)$fstatistic
+```
+
+```{r}
+pf(summary(lm_win)$fstatistic[1], summary(lm_win)$fstatistic[2], summary(lm_win)$fstatistic[3], lower.tail = FALSE)
+```
+
+```{r}
+summary(lm_role)$fstatistic
+```
+
+```{r}
+pf(summary(lm_role)$fstatistic[1], summary(lm_role)$fstatistic[2], summary(lm_role)$fstatistic[3], lower.tail = FALSE)
+```
+
+**Adjusted R square** for the models
+
+```{r}
+summary(lm_win)$adj.r.squared
+```
+
+```{r}
+summary(lm_role)$adj.r.squared
+```
+
+Results: Low R2 for both models
+
+**AICs** for the models
+
+```{r}
+glance(lm_win) %>% pull(AIC)
+```
+
+```{r}
+glance(lm_role) %>% pull(AIC)
+```
+
+Results: No considerable AIC difference between models
+
+**Coefficients** and predictors of the models
+
+```{r}
+win_predictors <- tidy(lm_win, conf.int = TRUE) |>
+  mutate(stand_coeff = lm.beta(lm_win)$standardized.coefficients)
+
+win_predictors
+```
+
+Results: win rate yields significant
+
+```{r}
+role_predictors <- tidy(lm_role, conf.int = TRUE) |>
+  mutate(stand_coeff = lm.beta(lm_role)$standardized.coefficients)
+
+role_predictors
+```
+
+Result: playing the initiating white role yields not significant
+
+#### Model comparision: ANOVA and Likelihood ratio test
+
+```{r}
+anova(lm_win, lm_role)
+```
+
+```{r}
+lrtest(lm_win, lm_role)
+```
+
+Results: Neither test was significant
+
+### Conclusions
+
+Unfortunately the total number of games could not be included in the models, thus conclusion cannot be drawn regarding that predictor. Also the std. residuals of all three models may seem questionable.
+
+Regarding the coefficients, the win rates seemed significant predictors of the ranking of the player as shown in the coefficient table of the 2nd model above. The rate of the playing the initiating (white) role appeared no t to contribute significantly to the 3rd model as per the table.
+
+Based on the results of the ANOVA and the Likelihood ratio test the difference between the models (with or without the role variable) has not reached the significance level, neither has the AIC dropped in a considerable manner. The adjusted R squares in both models are quite low, leaving a great proportion of unexplained variance.
+
+All together, even though the models show some significant results, the models do not explain too much of the variance. Additionally model diagnostics and possible violation of assumptions might leave the results unreliable.
